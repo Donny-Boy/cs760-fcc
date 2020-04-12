@@ -119,9 +119,9 @@ class Dataset(list):
                         continue
                     added_features = item.add_features(row, survey_features)
                     # Skip items with no response and not indication of failure
-                    if (item['not_commenter'] in standardize.exception_values and
-                            (item['bounced'] in standardize.exception_values or item['bounced'] == 0.0) and
-                            (item['send_failed'] in standardize.exception_values or item['send_failed'] == 0.0)):
+                    if ((item['not_commenter'] in standardize.exception_values or item['not_commenter'] == 0.0) and
+                            (item['bounced'] in standardize.exception_values or item['bounced'] != 1.0) and
+                            (item['send_failed'] in standardize.exception_values or item['send_failed'] != 1.0)):
                         continue
                     # Build the master list of features (used for column headers)
                     self.features.update(added_features)
