@@ -24,4 +24,5 @@ if __name__ == '__main__':
     dataset = Dataset()
     dataset.pull_points_from_survey()
     dataset.add_features_from_fcc()
+    dataset.filter_one_hot_features()
     dataset.print_csv()

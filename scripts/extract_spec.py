@@ -10,8 +10,8 @@ from lib import standardize
 # Maximum number of instances to extract.  None => extract all.
 # This is useful when testing changes to the spec.  It takes about
 # 30 minutes to perform a full extraction.
-# extract_max = 1000
 
+# extract_max = 100
 extract_max = None
 
 # extract_submitted_bin_minutes - The time range in minutes over which to
@@ -65,14 +65,24 @@ fcc_id_feature = {
     'filter': standardize.integer
 }
 
+fcc_submissiontype_feature = {
+    'one-hot': False,
+    'definition': [[['submissiontype', 'abbreviation']],
+                   [['submissiontype', 'type']]],
+    'filter': standardize.string
+}
+
+fcc_city_state_feature = {
+    'one-hot': True,
+    'one-hot-limit': 4000,
+    'definition': [[['addressentity', 'city'], ['addressentity', 'state']]],
+    'filter': standardize.city_state
+}
+
 fcc_features = {
     'email_hash': fcc_email_hash_feature,
     'id_submission': fcc_id_feature,
-    'city_state': {
-        'one-hot': False,
-        'definition': [[['addressentity', 'city'], ['addressentity', 'state']]],
-        'filter': standardize.city_state
-    },
+    'city_state': fcc_city_state_feature,
     'date_received': {
         'one-hot': False,
         'definition': [[['date_received']]],
@@ -84,12 +94,34 @@ fcc_features = {
         'definition': [[['date_disseminated']]],
         'filter': standardize.date
     },
-    'submissiontype': {
-        'one-hot': True,
-        'definition': [[['submissiontype', 'abbreviation']],
-                       [['submissiontype', 'type']]],
-        'filter': standardize.string
+    'email_confirmation': {
+        'one-hot': False,
+        'definition': [[['emailConfirmation']]],
+        'filter': standardize.boolean
+    },
+    'express_comment': {
+        'one-hot': False,
+        'definition': [[['emailConfirmation']]],
+        'filter': standardize.boolean
     }
+}
+
+survey_bounced_feature = {
+    'one-hot': False,
+    'definition': [[['bounced_or_filtered']]],
+    'filter': standardize.boolean
+}
+
+survey_not_commenter_feature = {
+    'one-hot': False,
+    'definition': [[['not_original_commenter']]],
+    'filter': standardize.boolean
+}
+
+survey_send_failed_feature = {
+    'one-hot': False,
+    'definition': [[['send_failed']]],
+    'filter': standardize.boolean
 }
 
 survey_features = {
@@ -103,19 +135,5 @@ survey_features = {
         'definition': [[['submitted']]],
         'filter': standardize.date
     },
-    'bounced': {
-        'one-hot': False,
-        'definition': [[['bounced_or_filtered']]],
-        'filter': standardize.boolean
-    },
-    'send_failed': {
-        'one-hot': False,
-        'definition': [[['send_failed']]],
-        'filter': standardize.boolean
-    },
-    'not_commenter': {
-        'one-hot': False,
-        'definition': [[['not_original_commenter']]],
-        'filter': standardize.boolean
-    }
+    'not_commenter': survey_not_commenter_feature
 }

@@ -37,6 +37,8 @@ class Dataitem(dict):
     """
     Collects selected features from the source datasets
     """
+    one_hot_counts = dict()
+
     def __init__(self, _hash):
         super().__init__()
         if not _hash:
@@ -45,16 +47,19 @@ class Dataitem(dict):
         self._id = None
 
     def add_features(self, row, features):
-        added_features = set()
         for feature, element in features.items():
             feature_value = standardize.element(element, row)
             if element['one-hot']:
+                if feature not in self.one_hot_counts:
+                    self.one_hot_counts[feature] = {'_spec': element}
+                feature_counts = self.one_hot_counts[feature]
                 feature = feature + '.' + str(feature_value)
+                if feature not in feature_counts:
+                    feature_counts[feature] = 0
+                feature_counts[feature] += 1
                 self[feature] = 1.0
             else:
                 self[feature] = feature_value
-            added_features.add(feature)
-        return added_features
 
     def add_bag_of_words(self, word_counts):
         for word in word_counts:
@@ -101,17 +106,20 @@ def make_point_from_survey_row(row, line_num):
     # Skip items without a valid e-mail hash.
     if row['email_valid'] != 'True':
         return None
+    # Skip items with no response and no indication of failure
+    survey_not_commenter = standardize.element(survey_not_commenter_feature, row)
+    survey_bounced = standardize.element(survey_bounced_feature, row)
+    survey_send_failed = standardize.element(survey_send_failed_feature, row)
+    if ((survey_not_commenter in standardize.exception_values or survey_not_commenter == 0.0) and
+            (survey_bounced in standardize.exception_values or survey_bounced != 1.0) and
+            (survey_send_failed in standardize.exception_values or survey_send_failed != 1.0)):
+        return None
     try:
         item = Dataitem(row['email_hash'])
     except ValueError as exc:
         sys.stderr.write("{}: {}\n".format(line_num, exc))
         return None
     item.add_features(row, survey_features)
-    # Skip items with no response and no indication of failure
-    if ((item['not_commenter'] in standardize.exception_values or item['not_commenter'] == 0.0) and
-            (item['bounced'] in standardize.exception_values or item['bounced'] != 1.0) and
-            (item['send_failed'] in standardize.exception_values or item['send_failed'] != 1.0)):
-        return None
     return item
 
 
@@ -139,7 +147,7 @@ class Dataset(list):
                              all items are included verbatim.
         :return:
         """
-        sys.stderr.write(os.path.basename(survey_csv_path))
+        sys.stderr.write(os.path.basename(path))
         sys.stderr.flush()
         with open(path, newline='') as csv_file:
             reader = csv.DictReader(csv_file)
@@ -149,7 +157,7 @@ class Dataset(list):
                     sys.stderr.write('.')
                     sys.stderr.flush()
                 if len(row) == num_cols:
-                    if filter is not None:
+                    if item_factory is not None:
                         item = item_factory(row, reader.line_num)
                         if item is None:
                             continue
@@ -259,7 +267,8 @@ class Dataset(list):
                     item = self._find_item(survey_items_in_json, submission)
                     if item is not None:
                         items_found_in_json[item.get_id()] = item
-                        self.features.update(item.add_features(submission, fcc_features))
+                        item.add_features(submission, fcc_features)
+                        self.features.update(item.keys())
                         status = '+'
 
             # Add bag-of-words features if specified.
@@ -287,6 +296,33 @@ class Dataset(list):
 
         # Select the top vocabulary features to include.
         self.add_features_from_vocabulary()
+
+    def filter_one_hot_features(self):
+        """
+        Select one-hot-features such that any specified 'one-hot-limit'
+        is honored for that feature.
+
+        :return: None
+        """
+        for feature, counts in Dataitem.one_hot_counts.items():
+            spec = counts['_spec']
+            del counts['_spec']
+            if 'one-hot-limit' in spec:
+                # keep values with the most occurrences up to the feature limit
+                limit = spec['one-hot-limit']
+                if len(counts) > limit:
+                    # get a list of values sorted in decreasing order
+                    top_values = sorted(counts, key=lambda value: counts[value], reverse=True)
+                    last = limit - 1
+                    last_count = counts[top_values[limit]]
+                    # walk backwards to find where the count changes
+                    while counts[top_values[last]] == last_count:
+                        last -= 1
+                    # grab the values up to where the count changes
+                    one_hot_values = set(top_values[:last+1])
+                    # remove the over-limit features
+                    self.features -= (counts.keys() - one_hot_values)
+                    sys.stderr.write('{} one-hot {} features added.\n'.format(len(one_hot_values), feature))
 
     def _update_vocabulary(self, word_counts):
         """
