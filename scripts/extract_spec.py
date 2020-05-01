@@ -98,11 +98,6 @@ fcc_features = {
         'one-hot': False,
         'definition': [[['emailConfirmation']]],
         'filter': standardize.boolean
-    },
-    'express_comment': {
-        'one-hot': False,
-        'definition': [[['emailConfirmation']]],
-        'filter': standardize.boolean
     }
 }
 

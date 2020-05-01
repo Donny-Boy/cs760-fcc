@@ -67,9 +67,9 @@ def boolean(value):
     if isinstance(value, str):
         if not value:
             return 0.0
-        if value == 'True':
+        if value in ['True', 'true']:
             return 1.0
-        if value == 'False':
+        if value in ['False', 'false']:
             return -1.0
     return 0.0
 
