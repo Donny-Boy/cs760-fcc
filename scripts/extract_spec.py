@@ -97,7 +97,8 @@ fcc_features = {
     'email_confirmation': {
         'one-hot': False,
         'definition': [[['emailConfirmation']]],
-        'filter': standardize.boolean
+        'filter': standardize.boolean,
+        'defaults': {'MISSING': 0.0}
     }
 }
 

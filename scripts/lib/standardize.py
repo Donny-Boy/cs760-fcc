@@ -158,4 +158,9 @@ def element(element_spec, source):
         # in case all options are exceptions.
         if last_value is not None:
             standard_value = last_value
+    # Allow the spec to override specific exceptions
+    try:
+        standard_value = element_spec['defaults'][standard_value]
+    except KeyError:
+        pass
     return standard_value
