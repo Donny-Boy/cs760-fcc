@@ -3,10 +3,12 @@ gc(reset = T)
 
 source("D:/UW/Courses/Spring 2020/760/project/r/ann.R")
 
-indir<-"D:/UW/Courses/Spring 2020/760/project/extract-bow/cv/"
+indir<-"D:/UW/Courses/Spring 2020/760/project/extract-bow/v5/cv/"
 outdir<-"D:/UW/Courses/Spring 2020/760/project/r/"
-dataset<-"1"
-fold<-"1"
+dataset<-"0"
+fold<-"7"
+ncomps<-"PCA"
 nfolds<-10
+indir<-paste(indir,dataset,"/",ncomps,"/",sep="")
 
-ann(indir,outdir,dataset,fold,nfolds)
+ann(indir,outdir,dataset,fold,ncomps,nfolds)
