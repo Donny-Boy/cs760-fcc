@@ -5,6 +5,7 @@
 # Module containing functions to extract and standardize feature values
 # from source datasets.
 import dateutil.parser
+import nltk
 
 exception_values = {'NULL', 'OVER', 'EMPTY', 'MISSING', 'INVALID'}
 
@@ -116,6 +117,37 @@ def string(value):
     if len(words) == 0:
         raise ValueError('EMPTY')
     return ' '.join(words)
+
+
+english_words = set(nltk.corpus.words.words())
+stop_words = set(nltk.corpus.stopwords.words('english'))
+
+
+def count_words(comment, names=None, counts=None):
+    """
+    Updates the word count dictionary based on words found in the comment.  Words must:
+     * Be English words in the NLTK corpus module
+     * Not appear in the NLTK list of stopwords.
+     * Not be the filer(s) names
+
+    For counting, all punctuation is removed an all characters lowercased.  Removing punctuation may
+    cause valid contractions and hyphenations to become invalid English words.
+    :param comment: comment being processing (str)
+    :param names: list of filer(s) names to exclude from counting (str)
+    :param counts: dictionary of word counts to update / expand (dict)
+    :return: updated word counts dictionary (dict)
+    """
+    if names is None:
+        names = []
+    if counts is None:
+        counts = dict()
+    words = [word for word in nltk.wordpunct_tokenize(comment.lower())
+             if word.isalpha() and word not in stop_words and word not in names and word in english_words]
+    for word in words:
+        if word not in counts:
+            counts[word] = 0
+        counts[word] += 1
+    return counts
 
 
 def element(element_spec, source):

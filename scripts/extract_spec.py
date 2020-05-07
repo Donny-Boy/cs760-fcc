@@ -33,6 +33,8 @@ extract_submitted_bin_minutes = 10
 
 extract_bag_of_words_vocabulary = 100
 
+extract_survey_no_response = True
+
 # The following dictionaries define how to extract values from the source datasets
 # and convert them into standardized features.
 # The key is the name of the feature. The value is another dictionary with the
@@ -82,7 +84,6 @@ fcc_city_state_feature = {
 fcc_features = {
     'email_hash': fcc_email_hash_feature,
     'id_submission': fcc_id_feature,
-    'city_state': fcc_city_state_feature,
     'date_received': {
         'one-hot': False,
         'definition': [[['date_received']]],
@@ -118,6 +119,12 @@ survey_send_failed_feature = {
     'one-hot': False,
     'definition': [[['send_failed']]],
     'filter': standardize.boolean
+}
+
+survey_short_comment_feature = {
+    'one-hot': False,
+    'definition': [[['short_comment']]],
+    'filter': standardize.count_words
 }
 
 survey_features = {

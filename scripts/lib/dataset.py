@@ -42,9 +42,11 @@ class Dataitem(dict):
     def __init__(self, _hash):
         super().__init__()
         if not _hash:
-            raise ValueError("empty hash")
+            _hash = 'MISSING'
         self._hash = _hash
         self._id = None
+        self._bag_of_words = None
+        self._comment = None
 
     def add_features(self, row, features):
         for feature, element in features.items():
@@ -85,6 +87,12 @@ class Dataitem(dict):
             return None
         return campaigns[0]
 
+    def set_comment(self, comment):
+        self._comment = comment
+
+    def get_comment(self):
+        return self._comment
+
 
 def load_email_index():
     with open(email_hash_index_path) as index_file:
@@ -104,13 +112,17 @@ def make_point_from_survey_row(row, line_num):
     :return: None
     """
     # Skip items without a valid e-mail hash.
-    if row['email_valid'] != 'True':
+    if not extract_survey_no_response and ['email_valid'] != 'True':
         return None
     # Skip items with no response and no indication of failure
     survey_not_commenter = standardize.element(survey_not_commenter_feature, row)
     survey_bounced = standardize.element(survey_bounced_feature, row)
     survey_send_failed = standardize.element(survey_send_failed_feature, row)
-    if ((survey_not_commenter in standardize.exception_values or survey_not_commenter == 0.0) and
+    survey_comment = standardize.count_words(row['short_comment'])
+    if extract_survey_no_response:
+        if survey_not_commenter not in standardize.exception_values and survey_not_commenter != 0.0:
+            return None
+    elif ((survey_not_commenter in standardize.exception_values or survey_not_commenter == 0.0) and
             (survey_bounced in standardize.exception_values or survey_bounced != 1.0) and
             (survey_send_failed in standardize.exception_values or survey_send_failed != 1.0)):
         return None
@@ -119,6 +131,7 @@ def make_point_from_survey_row(row, line_num):
     except ValueError as exc:
         sys.stderr.write("{}: {}\n".format(line_num, exc))
         return None
+    item.set_comment(survey_comment)
     item.add_features(row, survey_features)
     return item
 
@@ -132,6 +145,7 @@ class Dataset(list):
         self.features = set()
         self.by_hash = dict()
         self.by_json = None
+        self.by_submitted = dict()
         self.bins_by_campaign = dict()
         self.all_bins = dict()
         self.vocabulary = dict()
@@ -258,6 +272,7 @@ class Dataset(list):
             sys.stderr.flush()
             status = ' '
             items_found_in_json = dict()
+            candidate_items = dict()
             with open(os.path.join(fcc_deidentified_path, json_name)) as json_file:
                 for i, submission in enumerate(json.load(json_file)):
                     if i % 1000 == 0:
@@ -265,14 +280,16 @@ class Dataset(list):
                         sys.stderr.flush()
                         status = '.'
                     item = self._find_item(survey_items_in_json, submission)
-                    if item is not None:
+                    if item is None:
+                        candidate_items.update(self._find_candidates(submission))
+                    else:
                         items_found_in_json[item.get_id()] = item
                         item.add_features(submission, fcc_features)
                         self.features.update(item.keys())
                         status = '+'
 
             # Add bag-of-words features if specified.
-            if extract_bag_of_words_vocabulary is not None and items_found_in_json:
+            if extract_bag_of_words_vocabulary is not None and (items_found_in_json or candidate_items):
                 sys.stderr.write(status)
                 sys.stderr.flush()
                 status = ' '
@@ -283,6 +300,11 @@ class Dataset(list):
                             sys.stderr.flush()
                             status = '.'
                         submission_id = int(submission['id_submission'])
+                        if submission_id in candidate_items:
+                            item = self._find_item_by_comment(candidate_items[submission_id],
+                                                              submission['bag-of-words'])
+                            if item is not None:
+                                items_found_in_json[submission_id] = item
                         if submission_id in items_found_in_json:
                             item = items_found_in_json[submission_id]
                             item.add_bag_of_words(submission['bag-of-words'])
@@ -373,12 +395,17 @@ class Dataset(list):
         if extract_submitted_bin_minutes:
             self._initialize_all_json_buckets()
         for item in self:
-            for json_name in index[item.get_hash()]:
-                if json_name not in self.by_json:
-                    self.by_json[json_name] = dict()
-                if item.get_hash() not in self.by_json[json_name]:
-                    self.by_json[json_name][item.get_hash()] = self.by_hash[item.get_hash()]
-
+            if item.get_hash() in index:
+                for json_name in index[item.get_hash()]:
+                    if json_name not in self.by_json:
+                        self.by_json[json_name] = dict()
+                    if item.get_hash() not in self.by_json[json_name]:
+                        self.by_json[json_name][item.get_hash()] = self.by_hash[item.get_hash()]
+            else:
+                submitted = str(int(item['submitted']))
+                if submitted not in self.by_submitted:
+                    self.by_submitted[submitted] = []
+                self.by_submitted[submitted].append(item)
         sys.stderr.write(' {} buckets loaded\n'.format(len(self.by_json)))
         sys.stderr.flush()
 
@@ -403,6 +430,34 @@ class Dataset(list):
         self._add_to_submitted_bins(submission_date)
         return None
 
+    def _find_candidates(self, submission):
+        submission_date = standardize.element(fcc_submitted_feature, submission)
+        submission_id = standardize.element(fcc_id_feature, submission)
+        submitted = str(int(submission_date))
+        if submitted in self.by_submitted:
+            return {
+                submission_id: {
+                    'items': self.by_submitted[submitted],
+                    'submission': submission
+                }
+            }
+        return {}
+
+    def _find_item_by_comment(self, candidates, bag_of_words):
+        for item in candidates['items']:
+            comment_bag = item.get_comment()
+            submission = candidates['submission']
+            if len(comment_bag.keys() - bag_of_words.keys()) < 5:
+                submission_id = standardize.element(fcc_id_feature, submission)
+                submission_date = standardize.element(fcc_submitted_feature, submission)
+                item.set_id(submission_id)
+                self._add_to_submitted_bins(submission_date, campaign=item.get_campaign())
+                item.add_features(candidates['submission'], fcc_features)
+                self.features.update(item.keys())
+                candidates['items'].remove(item)
+                return item
+        return None
+
     def print_csv(self):
         """
         Write the extracted dataset as a CSV on stdout.
@@ -410,11 +465,13 @@ class Dataset(list):
         :return: None
         """
         fieldnames = sorted(self.features)
+        unmatched_items = 0
         writer = csv.DictWriter(sys.stdout, fieldnames=fieldnames, extrasaction='ignore', restval=0.0)
         writer.writeheader()
         for item in self:
-            writer.writerow(item)
-            if item.get_id() is None:
-                raise RuntimeError("unmatched item")
-            if item['email_hash'] in standardize.exception_values:
-                raise RuntimeError("invalid hash")
+            if item.get_id() is not None:
+                writer.writerow(item)
+            else:
+                unmatched_items += 1
+        if unmatched_items != 0:
+            sys.stderr.write('found {} unmatched items\n'.format(unmatched_items))
